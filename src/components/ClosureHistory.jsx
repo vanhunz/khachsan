@@ -407,25 +407,26 @@ export default function ClosureHistory({
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-slate-700 font-bold uppercase tracking-wider text-[11px]">
-                <th className="p-3">Ngày Khóa Sổ</th>
+                <th className="p-3">Ngày Chốt</th>
                 <th className="p-3">Tên Ca</th>
-                <th className="p-3 text-right">Tiền Phòng Đã Thu</th>
-                <th className="p-3 text-right">Tiền Mặt (Két)</th>
-                <th className="p-3 text-right">Chuyển Khoản</th>
-                <th className="p-3 text-right">Tổng Thực Thu</th>
-                <th className="p-3">Thời Điểm Khóa</th>
-                <th className="p-3">Ghi Chú Ca</th>
+                <th className="p-3 text-right">Vốn Đầu Ca</th>
+                <th className="p-3 text-right text-emerald-800">Tiền Mặt (TM)</th>
+                <th className="p-3 text-right text-blue-800">Chuyển Khoản (CK)</th>
+                <th className="p-3 text-right text-amber-800">Tổng Thực Thu</th>
+                <th className="p-3 text-right text-slate-900">Két Bàn Giao</th>
+                <th className="p-3">Thời Gian Chốt</th>
+                <th className="p-3">Ghi Chú</th>
                 <th className="p-3 text-center">Thao Tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium">
               {filteredClosures.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-400">
+                  <td colSpan={10} className="py-12 text-center text-slate-400">
                     <Lock className="mx-auto h-8 w-8 text-slate-300 mb-2" />
                     <p className="text-sm font-semibold">Chưa có ca nào được khóa sổ trong kỳ {dateRange.label}</p>
                     <p className="text-xs mt-1">
-                      Bấm "Khóa sổ ca" ở thanh điều hướng để thực hiện chốt ca
+                      Bấm "⚡ Chốt Nhanh" ở thanh điều hướng để thực hiện chốt ca
                     </p>
                   </td>
                 </tr>
@@ -443,32 +444,37 @@ export default function ClosureHistory({
                     {/* Shift Name */}
                     <td className="p-3 font-bold text-slate-800">
                       <span className="rounded-lg bg-slate-100 text-slate-800 border border-slate-200 px-2 py-0.5 text-xs">
-                        {c.shift_name || 'Chốt ngày'}
+                        {c.shift_name || 'Chốt ca'}
                       </span>
                     </td>
 
-                    {/* Room Revenue */}
-                    <td className="p-3 text-right font-mono text-slate-700 font-bold">
-                      {formatCurrencyVND(c.room_revenue_collected || 0)}
+                    {/* Initial Cash */}
+                    <td className="p-3 text-right font-mono text-slate-600 font-bold">
+                      {formatCurrencyVND(c.initial_cash || 0)}
                     </td>
 
                     {/* Net Cash */}
                     <td className="p-3 text-right font-mono font-bold text-emerald-800">
-                      {formatCurrencyVND(c.net_cash)}
+                      {formatCurrencyVND(c.net_cash || 0)}
                     </td>
 
                     {/* Net Transfer */}
                     <td className="p-3 text-right font-mono font-bold text-blue-800">
-                      {formatCurrencyVND(c.net_transfer)}
+                      {formatCurrencyVND(c.net_transfer || 0)}
                     </td>
 
                     {/* Total Recognized Revenue */}
-                    <td className="p-3 text-right font-mono font-black text-slate-900 text-sm">
-                      {formatCurrencyVND(c.total_revenue_recognized)}
+                    <td className="p-3 text-right font-mono font-black text-amber-700 text-sm">
+                      {formatCurrencyVND(c.total_revenue_recognized || 0)}
+                    </td>
+
+                    {/* Total Cash in Drawer */}
+                    <td className="p-3 text-right font-mono font-black text-slate-950 text-sm bg-amber-50/50">
+                      {formatCurrencyVND(c.total_cash_in_drawer ?? ((Number(c.initial_cash) || 0) + (Number(c.net_cash) || 0)))}
                     </td>
 
                     {/* Created At */}
-                    <td className="p-3 text-slate-500 font-mono text-[11px]">
+                    <td className="p-3 text-slate-500 font-mono text-[11px] whitespace-nowrap">
                       {formatDateTimeDisplay(c.created_at)}
                     </td>
 
@@ -484,7 +490,7 @@ export default function ClosureHistory({
                           type="button"
                           onClick={() => onOpenDetailModal(c.closed_date)}
                           className="flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 border border-blue-200 hover:bg-blue-100 transition"
-                          title="Xem chi tiết & in biên bản quyết toán ca này"
+                          title="Xem chi tiết ca này"
                         >
                           <Eye className="h-3.5 w-3.5" />
                           <span>Chi tiết</span>

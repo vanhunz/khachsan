@@ -25,6 +25,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Coins,
+  Zap,
 } from 'lucide-react';
 import {
   getTodayDateString,
@@ -47,7 +48,8 @@ export default function TransactionLog({
   onExportCSV,
   onExportLedgerCSV,
 }) {
-  const [activeSubTab, setActiveSubTab] = useState('ledger'); // 'ledger' (Sổ quỹ) | 'bookings' (Phiếu thuê)
+  const [activeSubTab, setActiveSubTab] = useState('ledger'); // 'ledger' | 'bookings' | 'audit'
+  const [auditFilter, setAuditFilter] = useState('all'); // 'all' | 'deleted' | 'shift'
 
   // Period filter: 'day' | 'week' | 'month'
   const [periodType, setPeriodType] = useState('day');
@@ -194,10 +196,34 @@ export default function TransactionLog({
     return (filteredBookings || []).slice(start, start + PAGE_SIZE);
   }, [filteredBookings, currentPage, totalBookingPages]);
 
+  const auditLogs = useMemo(() => {
+    return hotelStore.getAuditLogs();
+  }, [payments, bookings, activeSubTab]);
+
+  const filteredAuditLogs = useMemo(() => {
+    return (auditLogs || []).filter((log) => {
+      const isDelete = (log.action || '').toLowerCase().includes('xóa') || (log.action || '').toLowerCase().includes('hủy');
+      const isShift = (log.action || '').toLowerCase().includes('chốt') || (log.action || '').toLowerCase().includes('khóa');
+
+      if (auditFilter === 'deleted' && !isDelete) return false;
+      if (auditFilter === 'shift' && !isShift) return false;
+
+      if (searchTerm) {
+        const term = searchTerm.toLowerCase();
+        return (
+          (log.action || '').toLowerCase().includes(term) ||
+          (log.details || '').toLowerCase().includes(term) ||
+          (log.user || '').toLowerCase().includes(term)
+        );
+      }
+      return true;
+    });
+  }, [auditLogs, auditFilter, searchTerm]);
+
   // Reset to page 1 when subTab or filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeSubTab, periodType, selectedDate, selectedWeekDate, selectedMonth, selectedYear, selectedPaymentMethod, selectedPaymentType, selectedRoom, searchTerm]);
+  }, [activeSubTab, periodType, selectedDate, selectedWeekDate, selectedMonth, selectedYear, selectedPaymentMethod, selectedPaymentType, selectedRoom, searchTerm, auditFilter]);
 
   const rentalTypeNames = {
     hourly: 'Theo Giờ',
@@ -292,8 +318,8 @@ export default function TransactionLog({
               onClick={() => onOpenClosureModal(selectedDate)}
               className="flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-xs sm:text-sm font-black text-slate-950 shadow-md shadow-amber-500/20 hover:bg-amber-400 active:scale-[0.98] transition"
             >
-              <Lock className="h-4 w-4" />
-              <span>Khóa Sổ Ca</span>
+              <Zap className="h-4 w-4 fill-slate-950 text-slate-950" />
+              <span>⚡ Chốt Nhanh</span>
             </button>
 
             <button
@@ -545,6 +571,22 @@ export default function TransactionLog({
               <span>Nhật Ký Phiếu Thuê (Bookings)</span>
               <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold">
                 {filteredBookings.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveSubTab('audit')}
+              className={`flex items-center gap-2 rounded-2xl px-4 py-2 text-xs sm:text-sm font-black transition ${
+                activeSubTab === 'audit'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+              }`}
+            >
+              <Clock className="h-4 w-4 text-amber-500" />
+              <span>Nhật Ký Xóa Phòng & Chốt Ca</span>
+              <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold">
+                {filteredAuditLogs.length}
               </span>
             </button>
           </div>
@@ -939,6 +981,109 @@ export default function TransactionLog({
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* TAB 3: AUDIT LOG (NHẬT KÝ XÓA PHÒNG & THỜI GIAN CHỐT CA) */}
+        {activeSubTab === 'audit' && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2.5 bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setAuditFilter('all')}
+                  className={`rounded-xl px-3 py-1.5 font-bold transition ${
+                    auditFilter === 'all'
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+                  }`}
+                >
+                  Tất Cả ({auditLogs.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAuditFilter('deleted')}
+                  className={`rounded-xl px-3 py-1.5 font-bold transition ${
+                    auditFilter === 'deleted'
+                      ? 'bg-rose-600 text-white shadow-xs'
+                      : 'bg-rose-50 text-rose-800 hover:bg-rose-100 border border-rose-200'
+                  }`}
+                >
+                  ⚠️ Phòng Đã Xóa / Hủy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAuditFilter('shift')}
+                  className={`rounded-xl px-3 py-1.5 font-bold transition ${
+                    auditFilter === 'shift'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-200'
+                  }`}
+                >
+                  🔒 Thời Gian Chốt Ca
+                </button>
+              </div>
+
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Tìm phòng, tiền, nội dung..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white pl-8 pr-3 py-1.5 text-xs text-slate-900 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-100 text-slate-700 font-bold uppercase tracking-wider text-[11px]">
+                    <th className="p-3">Thời Gian</th>
+                    <th className="p-3">Sự Kiện</th>
+                    <th className="p-3">Chi Tiết Sự Kiện (Phòng / Tiền / Thời Điểm Chốt)</th>
+                    <th className="p-3 text-center">Người Thực Hiện</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium">
+                  {filteredAuditLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="py-12 text-center text-slate-400">
+                        <Clock className="mx-auto h-8 w-8 text-slate-300 mb-2" />
+                        <p className="text-sm font-semibold">Không có bản ghi nhật ký nào phù hợp</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredAuditLogs.map((log) => {
+                      const isDelete = (log.action || '').toLowerCase().includes('xóa') || (log.action || '').toLowerCase().includes('hủy');
+                      const isShift = (log.action || '').toLowerCase().includes('chốt') || (log.action || '').toLowerCase().includes('khóa');
+
+                      return (
+                        <tr key={log.id} className={`hover:bg-slate-50 transition ${isDelete ? 'bg-rose-50/20' : isShift ? 'bg-amber-50/20' : ''}`}>
+                          <td className="p-3 font-mono text-[11px] text-slate-500 whitespace-nowrap font-bold">
+                            {formatDateTimeDisplay(log.timestamp)}
+                          </td>
+                          <td className="p-3 whitespace-nowrap">
+                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                              isDelete
+                                ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                : isShift
+                                ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                : 'bg-slate-100 text-slate-800 border-slate-200'
+                            }`}>
+                              {log.action}
+                            </span>
+                          </td>
+                          <td className="p-3 text-slate-800 font-medium">{log.details}</td>
+                          <td className="p-3 text-center font-bold text-slate-600">{log.user || 'Lễ tân'}</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>

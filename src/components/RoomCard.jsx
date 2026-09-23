@@ -8,6 +8,7 @@ import {
   Coins,
   User,
   Edit3,
+  ArrowRightLeft,
 } from 'lucide-react';
 import {
   calculateTotalBill,
@@ -25,6 +26,7 @@ export default function RoomCard({
   onCheckOut,
   onOpenAdvancePayment,
   onOpenEditBooking,
+  onOpenTransferRoom,
   onSetStatus,
 }) {
   const [now, setNow] = useState(new Date());
@@ -97,11 +99,26 @@ export default function RoomCard({
             )}
           </div>
 
-          {/* Status Badge */}
+          {/* Status Badge & Transfer Button */}
           {isOccupied ? (
-            <div className="flex items-center gap-1 rounded bg-rose-600 px-1.5 py-0.5 text-[10px] font-bold text-white shadow-2xs">
-              <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
-              <span>Đang Ở</span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenTransferRoom && onOpenTransferRoom(room, activeBooking);
+                }}
+                disabled={isInputLocked}
+                className="flex items-center gap-0.5 rounded bg-blue-600 hover:bg-blue-700 text-white px-1.5 py-0.5 text-[10px] font-bold shadow-2xs transition active:scale-95 disabled:opacity-50"
+                title="Chuyển khách sang phòng trống khác"
+              >
+                <ArrowRightLeft className="h-2.5 w-2.5" />
+                <span>Đổi phòng</span>
+              </button>
+              <div className="flex items-center gap-1 rounded bg-rose-600 px-1.5 py-0.5 text-[10px] font-bold text-white shadow-2xs">
+                <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+                <span>Đang Ở</span>
+              </div>
             </div>
           ) : (
             <div className="flex items-center gap-1 rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold text-white shadow-2xs">

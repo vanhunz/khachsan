@@ -264,12 +264,23 @@ export function parseNoteColumn(note = '', totalAmount = 0, explicitDeposit = 0)
     };
   }
 
-  // 3. Check for Split Transfer amount: "ck [X]k" or "ck [X]"
+  // 3. Check for Split Transfer amount: "ck [X]k" or "ck [X]" (e.g. 'ck100k tm100k')
   const splitMatch = text.match(/ck\s*(\d+)(k|000)?/);
   if (splitMatch) {
     let transfer = Number(splitMatch[1]);
     if (splitMatch[2] === 'k' || transfer < 1000) transfer *= 1000;
-    const cash = Math.max(0, tot - transfer);
+
+    let cash = Math.max(0, tot - transfer);
+    const tmMatch = text.match(/tm\s*(\d+)(k|000)?/);
+    if (tmMatch) {
+      let explicitCash = Number(tmMatch[1]);
+      if (tmMatch[2] === 'k' || explicitCash < 1000) explicitCash *= 1000;
+      if (tot === 0 || explicitCash > 0) {
+        cash = explicitCash;
+      }
+    }
+
+    const recognizedRevenue = tot > 0 ? tot : transfer + cash;
 
     return {
       paymentMethod: 'split',
@@ -278,7 +289,7 @@ export function parseNoteColumn(note = '', totalAmount = 0, explicitDeposit = 0)
       cashRefund: 0,
       netCash: cash,
       netTransfer: transfer,
-      recognizedRevenue: tot,
+      recognizedRevenue,
       isDeposit: false,
       depositAmount: 0,
     };
@@ -368,4 +379,125 @@ export function detectExcelConflict(row, allRows = [], currentTime = new Date())
     isCritical: remainingMinutes <= 15,
     placeholderText: `Tối đa ${maxCheckOutStr} (Tránh cọc ${reservedRow.checkIn})`,
   };
+}
+
+export function parseRoomSortValue(roomNumber) {
+  if (!roomNumber) return 99999;
+  const str = String(roomNumber).trim();
+  if (str === '---' || str === '') return 99999;
+  if (str.toUpperCase() === 'CHI') return 99998;
+  if (str.toUpperCase() === 'LẺ' || str.toUpperCase() === 'BÁN LẺ') return 99997;
+  const num = parseInt(str.replace(/\D/g, ''), 10);
+  return isNaN(num) ? 99999 : num;
+}
+
+export function isExcelRowBlank(r) {
+  if (!r || r.isDateSeparator) return false;
+  const hasRoom = r.roomNumber && String(r.roomNumber).trim() !== '' && r.roomNumber !== '---';
+  const hasBeer = Number(r.beer) > 0;
+  const hasWater = Number(r.filteredWater) > 0;
+  const hasSoft = Number(r.softDrink) > 0;
+  const hasExtra = Number(r.extra) > 0;
+  const hasCheckIn = r.checkIn && String(r.checkIn).trim() !== '';
+  const hasCheckOut = r.checkOut && String(r.checkOut).trim() !== '';
+  const hasNote = r.note && String(r.note).trim() !== '';
+  const isDone = r.status === 'Xong';
+  return !hasRoom && !hasBeer && !hasWater && !hasSoft && !hasExtra && !hasCheckIn && !hasCheckOut && !hasNote && !isDone;
+}
+
+export function ensureFiveBlankRows(rowsList, defaultDate = '') {
+  if (!Array.isArray(rowsList)) return [];
+  const list = [...rowsList];
+
+  let blankCountAtEnd = 0;
+  for (let i = list.length - 1; i >= 0; i--) {
+    if (isExcelRowBlank(list[i])) {
+      blankCountAtEnd++;
+    } else {
+      break;
+    }
+  }
+
+  const needed = 5 - blankCountAtEnd;
+  if (needed > 0) {
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+    const todayStr = defaultDate || `${day}/${month}/${year}`;
+
+    for (let k = 0; k < needed; k++) {
+      list.push(
+        calculateExcelRow({
+          id: Date.now() + Math.floor(Math.random() * 100000) + k,
+          date: todayStr,
+          roomNumber: '',
+          roomType: 'Giờ',
+          checkIn: '',
+          checkOut: '',
+          beer: '',
+          filteredWater: '',
+          softDrink: '',
+          waterAmount: 0,
+          roomAmount: 0,
+          extra: 0,
+          totalAmount: 0,
+          depositAmount: 0,
+          note: '',
+          status: 'Đang ở',
+          isDateSeparator: false,
+        })
+      );
+    }
+  }
+
+  return list;
+}
+
+export function deduplicateExcelRows(rowsList) {
+  if (!Array.isArray(rowsList)) return [];
+  const seenActiveRooms = new Set();
+  const result = [];
+  for (let i = rowsList.length - 1; i >= 0; i--) {
+    const r = rowsList[i];
+    if (r && !r.isDateSeparator && (r.status === 'Đang ở' || r.status === 'Đã cọc')) {
+      const roomKey = String(r.roomNumber || '').trim();
+      if (roomKey && roomKey !== '---' && roomKey.toUpperCase() !== 'CHI' && roomKey.toUpperCase() !== 'LẺ' && roomKey.toUpperCase() !== 'BÁN LẺ' && roomKey.toUpperCase() !== 'KHACH LE') {
+        if (seenActiveRooms.has(roomKey)) {
+          continue; // Skip duplicate active row
+        }
+        seenActiveRooms.add(roomKey);
+      }
+    }
+    result.unshift(r);
+  }
+  return result;
+}
+
+export function sortExcelRows(rowsList) {
+  if (!Array.isArray(rowsList)) return [];
+  const nonBlankRows = rowsList.filter((r) => !isExcelRowBlank(r));
+  const blankRows = rowsList.filter((r) => isExcelRowBlank(r));
+
+  nonBlankRows.sort((a, b) => {
+    // 1. Group / sort by Date if different (DD/MM/YYYY)
+    if (a.date && b.date && a.date !== b.date) {
+      const partsA = String(a.date).split('/').map(Number);
+      const partsB = String(b.date).split('/').map(Number);
+      if (partsA.length === 3 && partsB.length === 3) {
+        const timeA = new Date(partsA[2], (partsA[1] || 1) - 1, partsA[0] || 1).getTime();
+        const timeB = new Date(partsB[2], (partsB[1] || 1) - 1, partsB[0] || 1).getTime();
+        if (timeA !== timeB) return timeA - timeB;
+      }
+    }
+
+    // 2. Date separators
+    if (a.isDateSeparator && !b.isDateSeparator) return -1;
+    if (!a.isDateSeparator && b.isDateSeparator) return 1;
+
+    // 3. Stable chronological creation order (keeps rows in place without wedging into middle)
+    return (a.id || 0) - (b.id || 0);
+  });
+
+  return [...nonBlankRows, ...blankRows];
 }

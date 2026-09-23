@@ -8,6 +8,7 @@ import {
   CreditCard,
   Printer,
   CheckCircle2,
+  AlertTriangle,
   Plus,
   Minus,
   RotateCcw,
@@ -55,6 +56,7 @@ export default function CheckOutModal({
   const [refundMethod, setRefundMethod] = useState('cash'); // 'cash' | 'transfer'
 
   const [notes, setNotes] = useState('');
+  const [showNoteConfirmModal, setShowNoteConfirmModal] = useState(false);
 
   useEffect(() => {
     if (isOpen && booking) {
@@ -147,7 +149,7 @@ export default function CheckOutModal({
     daily: 'Ngày Đêm',
   };
 
-  const handleCompletePayment = () => {
+  const executeFinalCheckOut = () => {
     let actualCash = finalCash;
     let actualTransfer = finalTransfer;
 
@@ -219,6 +221,15 @@ export default function CheckOutModal({
     onClose();
   };
 
+  const handleCompletePayment = () => {
+    const existingNotes = (booking.notes || notes || '').trim();
+    if (existingNotes !== '' && !showNoteConfirmModal) {
+      setShowNoteConfirmModal(true);
+      return;
+    }
+    executeFinalCheckOut();
+  };
+
   const handlePrintReceipt = () => {
     if (onOpenReceiptPreview) {
       onOpenReceiptPreview({
@@ -247,40 +258,39 @@ export default function CheckOutModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs overflow-y-auto">
-      <div className="relative my-6 w-full max-w-lg rounded-2xl bg-white p-5 sm:p-6 shadow-2xl border border-slate-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-3 backdrop-blur-xs overflow-y-auto">
+      <div className="relative my-3 w-full max-w-lg rounded-xl bg-white p-4 sm:p-5 shadow-2xl border border-slate-200">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm">
-              <Receipt className="h-5 w-5" />
+        <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-white">
+              <Receipt className="h-4 w-4" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-black text-slate-950">
-                  Trả Phòng & Thanh Toán P.{roomNumber}
+                <h2 className="text-base font-black text-slate-950">
+                  Trả Phòng P.{roomNumber}
                 </h2>
-                <span className="rounded-md bg-blue-50 border border-blue-200 px-2 py-0.5 text-xs font-bold text-blue-800">
+                <span className="rounded bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[11px] font-bold text-blue-800">
                   {rentalTypeNames[rentalType] || 'Theo Giờ'}
                 </span>
                 {isSpecial && (
-                  <span className="rounded-md bg-amber-50 border border-amber-300 px-2 py-0.5 text-xs font-bold text-amber-900">
+                  <span className="rounded bg-amber-50 border border-amber-300 px-1.5 py-0.5 text-[11px] font-bold text-amber-900">
                     {roomRateMode === 'double' ? 'Phòng Đôi' : 'Phòng Đơn'}
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-500">
-                Khách: <strong>{booking.customer_name || 'Khách vãng lai'}</strong>{' '}
-                {booking.customer_phone ? `• SĐT: ${booking.customer_phone}` : ''}
+              <p className="text-[11px] text-slate-500">
+                {booking.customer_name || 'Khách vãng lai'}{booking.customer_phone ? ` • ${booking.customer_phone}` : ''}
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
+            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
           >
-            <X className="h-5 w-5" />
+            <X className="h-4 w-4" />
           </button>
         </div>
 
@@ -749,20 +759,20 @@ export default function CheckOutModal({
         </div>
 
         {/* Nút thao tác */}
-        <div className="mt-4 flex gap-2.5 pt-3 border-t border-slate-200">
+        <div className="mt-3 flex gap-2 pt-2.5 border-t border-slate-200">
           <button
             type="button"
             onClick={handlePrintReceipt}
-            className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-bold text-slate-700 hover:bg-slate-100 transition"
+            className="flex items-center justify-center gap-1 rounded-lg border border-slate-300 bg-white py-2 px-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition"
           >
-            <Printer className="h-4 w-4" />
+            <Printer className="h-3.5 w-3.5" />
             <span>In Phiếu</span>
           </button>
 
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-slate-300 bg-white py-2.5 px-4 text-xs font-bold text-slate-700 hover:bg-slate-100 transition"
+            className="rounded-lg border border-slate-300 bg-white py-2 px-3 text-xs font-bold text-slate-700 hover:bg-slate-100 transition"
           >
             Đóng
           </button>
@@ -770,19 +780,62 @@ export default function CheckOutModal({
           <button
             type="button"
             onClick={handleCompletePayment}
-            className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-slate-900 py-2.5 px-4 text-xs sm:text-sm font-black text-white hover:bg-black active:scale-[0.99] transition shadow-md"
+            className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-slate-900 py-2 px-3 text-xs sm:text-sm font-black text-white hover:bg-black active:scale-[0.99] transition shadow-sm"
           >
             <CheckCircle2 className="h-4 w-4" />
             <span>
               {balanceDue > 0
-                ? `Xác Nhận Trả Phòng & Thu ${formatCurrencyVND(balanceDue)}`
+                ? `Trả Phòng & Thu ${formatCurrencyVND(balanceDue)}`
                 : advanceOverpaid > 0
-                ? `Xác Nhận Trả Phòng & Thối ${formatCurrencyVND(advanceOverpaid)}`
-                : `Xác Nhận Trả Phòng`}
+                ? `Trả Phòng & Thối ${formatCurrencyVND(advanceOverpaid)}`
+                : `Trả Phòng`}
             </span>
           </button>
         </div>
       </div>
+
+      {/* MODAL CẢNH BÁO GHI CHÚ TRƯỚC KHI TRẢ PHÒNG */}
+      {showNoteConfirmModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/80 p-3 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="relative w-full max-w-sm rounded-xl bg-white p-4 shadow-2xl border-2 border-amber-400 space-y-3 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
+                <AlertTriangle className="h-4 w-4 text-amber-700" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-900">
+                  ⚠️ Ghi Chú Phòng {roomNumber}
+                </h3>
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-amber-50 border border-amber-300 p-2.5 text-xs font-bold text-amber-950 whitespace-pre-wrap">
+              "{booking.notes || notes}"
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowNoteConfirmModal(false)}
+                className="flex-1 rounded-lg border border-slate-300 bg-white py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition"
+              >
+                Quay lại
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowNoteConfirmModal(false);
+                  executeFinalCheckOut();
+                }}
+                className="flex-[2] rounded-lg bg-emerald-600 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 active:scale-[0.99] transition shadow-sm flex items-center justify-center gap-1"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                <span>Đã đọc & Trả phòng</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

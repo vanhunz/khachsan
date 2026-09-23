@@ -381,58 +381,67 @@ export default function DailyCloseoutDetailModal({
                 <div className="flex items-center gap-2">
                   <Lock className="h-4 w-4 text-amber-600" />
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                    Danh Sách Các Ca Đã Khóa Sổ ({detail.existingClosures.length} ca)
+                    Chi Tiết Các Ca Đã Chốt ({detail.existingClosures.length} ca)
                   </h3>
                 </div>
-                <span className="text-[11px] text-slate-500 font-medium">
-                  Ghi nhận từ bảng `shift_closures`
-                </span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {detail.existingClosures.map((closure) => (
                   <div
                     key={closure.id}
-                    className="rounded-xl bg-white p-3 border border-slate-200 shadow-xs space-y-2"
+                    className="rounded-xl bg-white p-3.5 border border-slate-200 shadow-xs space-y-2.5"
                   >
                     <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-slate-900 text-xs rounded-lg bg-indigo-50 text-indigo-900 border border-indigo-200 px-2 py-0.5">
+                        <span className="font-bold text-slate-900 text-xs rounded-lg bg-indigo-50 text-indigo-900 border border-indigo-200 px-2.5 py-0.5">
                           {closure.shift_name}
                         </span>
                         <span className="text-xs font-bold font-mono-nums text-slate-600">
                           {closure.closed_date}
                         </span>
                       </div>
-                      <span className="text-[11px] font-mono-nums text-slate-500">
-                        {formatDateTimeDisplay(closure.created_at)}
+                      <span className="text-[11px] font-mono-nums text-slate-500 font-bold">
+                        ⏰ {formatDateTimeDisplay(closure.created_at)}
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2 text-xs">
-                      <div>
-                        <span className="text-[10px] text-slate-400 block">Két tiền mặt:</span>
-                        <span className="font-mono-nums font-bold text-emerald-700">
-                          {formatCurrencyVND(closure.net_cash)}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                      <div className="bg-emerald-50/70 p-2 rounded-lg border border-emerald-100">
+                        <span className="text-[10px] text-emerald-800 font-bold block">💵 Tiền Mặt (TM):</span>
+                        <span className="font-mono-nums font-black text-emerald-700 text-sm">
+                          {formatCurrencyVND(closure.net_cash || 0)}
                         </span>
                       </div>
-                      <div>
-                        <span className="text-[10px] text-slate-400 block">Chuyển khoản:</span>
-                        <span className="font-mono-nums font-bold text-blue-700">
-                          {formatCurrencyVND(closure.net_transfer)}
+                      <div className="bg-blue-50/70 p-2 rounded-lg border border-blue-100">
+                        <span className="text-[10px] text-blue-800 font-bold block">💳 Chuyển Khoản (CK):</span>
+                        <span className="font-mono-nums font-black text-blue-700 text-sm">
+                          {formatCurrencyVND(closure.net_transfer || 0)}
                         </span>
                       </div>
-                      <div>
-                        <span className="text-[10px] text-slate-400 block">Tổng doanh thu:</span>
-                        <span className="font-mono-nums font-black text-amber-700">
-                          {formatCurrencyVND(closure.total_revenue_recognized)}
+                      <div className="bg-amber-50/70 p-2 rounded-lg border border-amber-100">
+                        <span className="text-[10px] text-amber-800 font-bold block">📊 Tổng Thu Ca:</span>
+                        <span className="font-mono-nums font-black text-amber-800 text-sm">
+                          {formatCurrencyVND(closure.total_revenue_recognized || 0)}
+                        </span>
+                      </div>
+                      <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
+                        <span className="text-[10px] text-slate-600 font-bold block">🏦 Vốn Đầu Ca:</span>
+                        <span className="font-mono-nums font-bold text-slate-800">
+                          {formatCurrencyVND(closure.initial_cash || 0)}
+                        </span>
+                      </div>
+                      <div className="bg-slate-900 text-white p-2 rounded-lg col-span-1 sm:col-span-2">
+                        <span className="text-[10px] text-slate-300 font-bold block">💰 Két Tiền Bàn Giao:</span>
+                        <span className="font-mono-nums font-black text-amber-400 text-sm">
+                          {formatCurrencyVND(closure.total_cash_in_drawer ?? ((Number(closure.initial_cash) || 0) + (Number(closure.net_cash) || 0)))}
                         </span>
                       </div>
                     </div>
 
                     {closure.notes && (
-                      <div className="text-[11px] text-slate-600 bg-slate-50 p-2 rounded-lg italic">
-                        <strong>Ghi chú bàn giao:</strong> {closure.notes}
+                      <div className="text-[11px] text-slate-700 bg-slate-50 p-2 rounded-lg border border-slate-200">
+                        <strong>Ghi chú:</strong> {closure.notes}
                       </div>
                     )}
 

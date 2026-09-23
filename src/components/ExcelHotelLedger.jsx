@@ -17,13 +17,29 @@ import {
   Info,
   Sparkles,
   ArrowUpDown,
+  Clock,
+  ChevronLeft,
+  ChevronRight,
+  X,
 } from 'lucide-react';
 import {
   calculateExcelRow,
   parseNoteColumn,
   detectExcelConflict,
   timeStringToDecimalHours,
+  parseRoomSortValue,
+  isExcelRowBlank,
+  ensureFiveBlankRows,
+  deduplicateExcelRows,
+  sortExcelRows,
 } from '../utils/excelParser';
+export {
+  parseRoomSortValue,
+  isExcelRowBlank,
+  ensureFiveBlankRows,
+  deduplicateExcelRows,
+  sortExcelRows,
+};
 import {
   hotelStore,
   getTodayDateString,
@@ -36,131 +52,6 @@ const STORAGE_KEY_EXCEL_ROWS = 'hotel_pos_excel_rows_v3';
 
 // Clean initial state (0 mock data)
 const INITIAL_EXCEL_ROWS = [];
-
-export function parseRoomSortValue(roomNumber) {
-  if (!roomNumber) return 99999;
-  const str = String(roomNumber).trim();
-  if (str === '---' || str === '') return 99999;
-  if (str.toUpperCase() === 'CHI') return 99998;
-  if (str.toUpperCase() === 'LẺ' || str.toUpperCase() === 'BÁN LẺ') return 99997;
-  const num = parseInt(str.replace(/\D/g, ''), 10);
-  return isNaN(num) ? 99999 : num;
-}
-
-export function isExcelRowBlank(r) {
-  if (!r || r.isDateSeparator) return false;
-  const hasRoom = r.roomNumber && String(r.roomNumber).trim() !== '' && r.roomNumber !== '---';
-  const hasBeer = Number(r.beer) > 0;
-  const hasWater = Number(r.filteredWater) > 0;
-  const hasSoft = Number(r.softDrink) > 0;
-  const hasExtra = Number(r.extra) > 0;
-  const hasCheckIn = r.checkIn && String(r.checkIn).trim() !== '';
-  const hasCheckOut = r.checkOut && String(r.checkOut).trim() !== '';
-  const hasNote = r.note && String(r.note).trim() !== '';
-  const isDone = r.status === 'Xong';
-  return !hasRoom && !hasBeer && !hasWater && !hasSoft && !hasExtra && !hasCheckIn && !hasCheckOut && !hasNote && !isDone;
-}
-
-export function ensureFiveBlankRows(rowsList, defaultDate = '') {
-  if (!Array.isArray(rowsList)) return [];
-  const list = [...rowsList];
-
-  let blankCountAtEnd = 0;
-  for (let i = list.length - 1; i >= 0; i--) {
-    if (isExcelRowBlank(list[i])) {
-      blankCountAtEnd++;
-    } else {
-      break;
-    }
-  }
-
-  const needed = 5 - blankCountAtEnd;
-  if (needed > 0) {
-    const now = new Date();
-    const day = String(now.getDate()).padStart(2, '0');
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const year = now.getFullYear();
-    const todayStr = defaultDate || `${day}/${month}/${year}`;
-
-    for (let k = 0; k < needed; k++) {
-      list.push(
-        calculateExcelRow({
-          id: Date.now() + Math.floor(Math.random() * 100000) + k,
-          date: todayStr,
-          roomNumber: '',
-          roomType: 'Giờ',
-          checkIn: '',
-          checkOut: '',
-          beer: '',
-          filteredWater: '',
-          softDrink: '',
-          waterAmount: 0,
-          roomAmount: 0,
-          extra: 0,
-          totalAmount: 0,
-          depositAmount: 0,
-          note: '',
-          status: 'Đang ở',
-          isDateSeparator: false,
-        })
-      );
-    }
-  }
-
-  return list;
-}
-
-export function deduplicateExcelRows(rowsList) {
-  if (!Array.isArray(rowsList)) return [];
-  const seenActiveRooms = new Set();
-  const result = [];
-  for (let i = rowsList.length - 1; i >= 0; i--) {
-    const r = rowsList[i];
-    if (r && !r.isDateSeparator && (r.status === 'Đang ở' || r.status === 'Đã cọc')) {
-      const roomKey = String(r.roomNumber || '').trim();
-      if (roomKey && roomKey !== '---' && roomKey.toUpperCase() !== 'CHI' && roomKey.toUpperCase() !== 'LẺ' && roomKey.toUpperCase() !== 'BÁN LẺ' && roomKey.toUpperCase() !== 'KHACH LE') {
-        if (seenActiveRooms.has(roomKey)) {
-          continue; // Skip duplicate active row
-        }
-        seenActiveRooms.add(roomKey);
-      }
-    }
-    result.unshift(r);
-  }
-  return result;
-}
-
-export function sortExcelRows(rowsList) {
-  if (!Array.isArray(rowsList)) return [];
-  const nonBlankRows = rowsList.filter((r) => !isExcelRowBlank(r));
-  const blankRows = rowsList.filter((r) => isExcelRowBlank(r));
-
-  nonBlankRows.sort((a, b) => {
-    // 1. Group / sort by Date if different (DD/MM/YYYY)
-    if (a.date && b.date && a.date !== b.date) {
-      const partsA = String(a.date).split('/').map(Number);
-      const partsB = String(b.date).split('/').map(Number);
-      if (partsA.length === 3 && partsB.length === 3) {
-        const timeA = new Date(partsA[2], (partsA[1] || 1) - 1, partsA[0] || 1).getTime();
-        const timeB = new Date(partsB[2], (partsB[1] || 1) - 1, partsB[0] || 1).getTime();
-        if (timeA !== timeB) return timeA - timeB;
-      }
-    }
-
-    // 2. Date separators
-    if (a.isDateSeparator && !b.isDateSeparator) return -1;
-    if (!a.isDateSeparator && b.isDateSeparator) return 1;
-
-    // 3. Chronological order by check-in time (time of arrival)
-    const timeA = a.checkIn || '';
-    const timeB = b.checkIn || '';
-    if (timeA && timeB && timeA !== timeB) return timeA.localeCompare(timeB);
-
-    return (a.id || 0) - (b.id || 0);
-  });
-
-  return [...nonBlankRows, ...blankRows];
-}
 
 export default function ExcelHotelLedger({
   onSyncWithMatrix,
@@ -264,11 +155,11 @@ export default function ExcelHotelLedger({
           const cleanCheckIn = hasRoom ? (r.checkIn || '') : '';
           let rowStatus = r.status;
           let rowCheckOut = r.checkOut;
-          if (r.bookingId && completedBookingIds.has(r.bookingId) && (rowStatus === 'Đang ở' || rowStatus === 'Đã cọc')) {
-            rowStatus = 'Xong';
-            rowCheckOut = rowCheckOut || cleanCheckIn;
+          let rowBookingId = r.bookingId;
+          if (rowBookingId && completedBookingIds.has(rowBookingId) && (rowStatus === 'Đang ở' || rowStatus === 'Đã cọc')) {
+            rowBookingId = null;
           }
-          return calculateExcelRow({ ...r, checkIn: cleanCheckIn, status: rowStatus, checkOut: rowCheckOut }, new Date());
+          return calculateExcelRow({ ...r, bookingId: rowBookingId, checkIn: cleanCheckIn, status: rowStatus, checkOut: rowCheckOut }, new Date());
         });
         return ensureFiveBlankRows(sortExcelRows(deduplicateExcelRows(mapped)));
       }
@@ -288,6 +179,18 @@ export default function ExcelHotelLedger({
   const [selectedCell, setSelectedCell] = useState({ rowIdx: 0, colKey: 'date' });
   const [filterDate, setFilterDate] = useState('');
   const tableRef = useRef(null);
+
+  // Pagination & Modals
+  const PAGE_SIZE = 20;
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Split Payment Modal state
+  const [splitModalRow, setSplitModalRow] = useState(null);
+  const [splitTransferAmount, setSplitTransferAmount] = useState('');
+  const [splitCustomNote, setSplitCustomNote] = useState('');
+
+  // Note Confirmation Modal on Check Out
+  const [noteConfirmRow, setNoteConfirmRow] = useState(null);
 
   // Update timer every 10s for reactive stay and buffer checks + 6:00 AM separator check
   useEffect(() => {
@@ -423,11 +326,11 @@ export default function ExcelHotelLedger({
             const cleanCheckIn = hasRoom ? (r.checkIn || '') : '';
             let rowStatus = r.status;
             let rowCheckOut = r.checkOut;
-            if (r.bookingId && completedBookingIds.has(r.bookingId) && (rowStatus === 'Đang ở' || rowStatus === 'Đã cọc')) {
-              rowStatus = 'Xong';
-              rowCheckOut = rowCheckOut || cleanCheckIn;
+            let rowBookingId = r.bookingId;
+            if (rowBookingId && completedBookingIds.has(rowBookingId) && (rowStatus === 'Đang ở' || rowStatus === 'Đã cọc')) {
+              rowBookingId = null;
             }
-            return calculateExcelRow({ ...r, checkIn: cleanCheckIn, status: rowStatus, checkOut: rowCheckOut }, new Date());
+            return calculateExcelRow({ ...r, bookingId: rowBookingId, checkIn: cleanCheckIn, status: rowStatus, checkOut: rowCheckOut }, new Date());
           });
 
           isSyncingFromStoreRef.current = true;
@@ -516,6 +419,25 @@ export default function ExcelHotelLedger({
     });
   }, []);
 
+  // Request Finalize Payment (checks for notes first)
+  const requestFinalizePayment = useCallback((row) => {
+    const existingNote = (row.note || '').trim();
+    if (existingNote !== '') {
+      setNoteConfirmRow(row);
+    } else {
+      handleFinalizePayment(row.id);
+    }
+  }, [handleFinalizePayment]);
+
+  // Open Split Payment Modal for a row
+  const handleOpenSplitModal = useCallback((row) => {
+    const tot = Number(row.totalAmount) || 0;
+    const parsed = parseNoteColumn(row.note, tot, row.depositAmount);
+    setSplitModalRow(row);
+    setSplitTransferAmount(parsed.transferAmount > 0 ? String(parsed.transferAmount) : String(Math.round(tot / 2)));
+    setSplitCustomNote(row.note ? row.note.replace(/ck\s*\d+\w*/gi, '').replace(/tm\s*\d+\w*/gi, '').replace(/\|/g, '').trim() : '');
+  }, []);
+
   // Recalculate row helper with duplicate active room check & auto-jump for Ngày đêm
   const handleUpdateRow = useCallback((id, updater) => {
     setRows((currentRows) => {
@@ -530,24 +452,6 @@ export default function ExcelHotelLedger({
         updated.checkIn = '12:00';
       }
 
-      // Duplicate active room check
-      if (updated.roomNumber && String(updated.roomNumber).trim() !== '' && updated.status === 'Đang ở') {
-        const trimmedRoom = String(updated.roomNumber).trim();
-        if (trimmedRoom !== '---' && trimmedRoom.toUpperCase() !== 'CHI' && trimmedRoom.toUpperCase() !== 'LẺ') {
-          const duplicate = currentRows.find(
-            (other) =>
-              other.id !== id &&
-              !other.isDateSeparator &&
-              other.status === 'Đang ở' &&
-              String(other.roomNumber).trim() === trimmedRoom
-          );
-          if (duplicate) {
-            alert(`⚠️ Phòng ${trimmedRoom} hiện đang có phòng "Đang ở" chưa thanh toán/chốt! Vui lòng chốt hoặc trả phòng cũ trước.`);
-            return currentRows;
-          }
-        }
-      }
-
       const calculated = calculateExcelRow(updated, new Date());
       const nextRows = [...currentRows];
       nextRows[idx] = calculated;
@@ -555,6 +459,32 @@ export default function ExcelHotelLedger({
       return ensureFiveBlankRows(nextRows, calculated.date);
     });
   }, []);
+
+  // Confirm Split Payment from Modal
+  const handleConfirmSplitModal = useCallback(() => {
+    if (!splitModalRow) return;
+    const tot = Number(splitModalRow.totalAmount) || 0;
+    const ckNum = Number(splitTransferAmount) || 0;
+    const tmNum = Math.max(0, tot - ckNum);
+
+    let noteParts = [];
+    if (ckNum > 0) {
+      noteParts.push(`ck${Math.round(ckNum / 1000)}k`);
+    }
+    if (tmNum > 0 && ckNum > 0) {
+      noteParts.push(`tm${Math.round(tmNum / 1000)}k`);
+    }
+    if (splitCustomNote && splitCustomNote.trim()) {
+      noteParts.push(splitCustomNote.trim());
+    }
+    const finalNote = noteParts.join(' ');
+
+    handleUpdateRow(splitModalRow.id, {
+      paymentMethod: 'split',
+      note: finalNote,
+    });
+    setSplitModalRow(null);
+  }, [splitModalRow, splitTransferAmount, splitCustomNote, handleUpdateRow]);
 
   // Toggle unlock for a paid row with user confirmation
   const handleToggleUnlock = useCallback((rowId) => {
@@ -605,7 +535,12 @@ export default function ExcelHotelLedger({
       isDateSeparator: false,
     });
 
-    setRows((prev) => ensureFiveBlankRows([...prev, newRow], dateStr));
+    setRows((prev) => {
+      const updated = ensureFiveBlankRows([...prev, newRow], dateStr);
+      const nextTotalPages = Math.max(1, Math.ceil(updated.length / PAGE_SIZE));
+      setCurrentPage(nextTotalPages);
+      return updated;
+    });
   };
 
   // Add blue date separator row (6h sáng)
@@ -646,7 +581,20 @@ export default function ExcelHotelLedger({
   };
 
   const handleDeleteRow = (id) => {
-    if (window.confirm('Bạn có chắc muốn xóa dòng này?')) {
+    const targetRow = rows.find((r) => r.id === id);
+    if (!targetRow) return;
+
+    const hasData = targetRow.roomNumber || targetRow.totalAmount > 0 || targetRow.checkIn || targetRow.note;
+
+    if (window.confirm(`Bạn có chắc muốn xóa dòng này${targetRow.roomNumber ? ` (Phòng P.${targetRow.roomNumber})` : ''}?`)) {
+      if (hasData) {
+        hotelStore.addAuditLog({
+          action: 'Xóa phòng / Hủy dòng',
+          details: `Đã xóa dòng Phòng P.${targetRow.roomNumber || '---'} (Ngày: ${targetRow.date || '---'}, Vào: ${targetRow.checkIn || '---'}, Ra: ${targetRow.checkOut || '---'}, Tiền đã tính: ${formatCurrencyVND(targetRow.totalAmount || 0)}, Trạng thái: ${targetRow.status || '---'}, Ghi chú: ${targetRow.note || '---'})`,
+          user: 'Lễ tân / Thu ngân',
+          severity: 'danger',
+        });
+      }
       setRows((prev) => prev.filter((r) => r.id !== id));
     }
   };
@@ -714,6 +662,15 @@ export default function ExcelHotelLedger({
 
   const handleClearExcelTable = () => {
     if (window.confirm('Bạn có chắc chắn muốn XÓA SẠCH toàn bộ dữ liệu bảng tính Excel không?')) {
+      const activeDataCount = rows.filter((r) => !r.isDateSeparator && (r.roomNumber || r.totalAmount > 0)).length;
+      if (activeDataCount > 0) {
+        hotelStore.addAuditLog({
+          action: 'Xóa sạch bảng Excel',
+          details: `Người dùng đã bấm xóa sạch toàn bộ bảng tính Excel (${activeDataCount} dòng có dữ liệu phòng bị xóa)`,
+          user: 'Lễ tân / Thu ngân',
+          severity: 'danger',
+        });
+      }
       setRows([]);
       localStorage.removeItem(STORAGE_KEY_EXCEL_ROWS);
       if (typeof window !== 'undefined') {
@@ -770,6 +727,9 @@ export default function ExcelHotelLedger({
         const nextCol = colIdx > 0 ? columnsList[colIdx - 1] : columnsList[columnsList.length - 1];
         const nextRow = colIdx === 0 && rowIdx > 0 ? rowIdx - 1 : rowIdx;
         setSelectedCell({ rowIdx: nextRow, colKey: nextCol });
+        if (nextRow < startIndex) {
+          setCurrentPage(Math.max(1, currentPage - 1));
+        }
       } else {
         // move right
         if (colIdx < columnsList.length - 1) {
@@ -778,6 +738,9 @@ export default function ExcelHotelLedger({
           // Last column of row
           if (rowIdx < rows.length - 1) {
             setSelectedCell({ rowIdx: rowIdx + 1, colKey: columnsList[0] });
+            if (rowIdx + 1 >= endIndex) {
+              setCurrentPage((p) => Math.min(totalPages, p + 1));
+            }
           } else {
             // Last column of last row -> Append new row!
             handleAddRow();
@@ -789,6 +752,9 @@ export default function ExcelHotelLedger({
       e.preventDefault();
       if (rowIdx < rows.length - 1) {
         setSelectedCell({ rowIdx: rowIdx + 1, colKey });
+        if (rowIdx + 1 >= endIndex) {
+          setCurrentPage((p) => Math.min(totalPages, p + 1));
+        }
       } else {
         handleAddRow();
         setSelectedCell({ rowIdx: rowIdx + 1, colKey: 'roomNumber' });
@@ -801,6 +767,20 @@ export default function ExcelHotelLedger({
     if (!filterDate) return rows;
     return rows.filter((r) => r.isDateSeparator || r.date === filterDate);
   }, [rows, filterDate]);
+
+  const totalPages = Math.max(1, Math.ceil(displayRows.length / PAGE_SIZE));
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
+
+  const startIndex = (currentPage - 1) * PAGE_SIZE;
+  const endIndex = Math.min(startIndex + PAGE_SIZE, displayRows.length);
+  const paginatedRows = useMemo(() => {
+    return displayRows.slice(startIndex, endIndex);
+  }, [displayRows, startIndex, endIndex]);
 
   // Aggregate Settlement Calculations strictly according to SRS Section 6
   const settlementSummary = useMemo(() => {
@@ -1053,6 +1033,59 @@ export default function ExcelHotelLedger({
           </button>
         </div>
       </div>
+
+      {/* Pagination Controls (Top) */}
+      {totalPages > 1 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 bg-slate-100 rounded-xl border border-slate-300 text-xs font-bold shadow-xs">
+          <div className="flex items-center gap-2 text-slate-700">
+            <span>
+              Hiển thị dòng <strong className="text-slate-900 font-mono">{startIndex + 1} - {endIndex}</strong> / Tổng <strong className="text-slate-900 font-mono">{displayRows.length}</strong> dòng
+            </span>
+            <span className="text-[11px] font-normal text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
+              20 dòng / trang
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              className="flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-slate-700 hover:bg-slate-200 disabled:opacity-40 disabled:cursor-not-allowed transition"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+              <span>Trang trước</span>
+            </button>
+
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setCurrentPage(p)}
+                  className={`h-7 min-w-[28px] px-1.5 rounded-lg text-xs font-black transition ${
+                    currentPage === p
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-200'
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              className="flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-slate-700 hover:bg-slate-200 disabled:opacity-40 disabled:cursor-not-allowed transition"
+            >
+              <span>Trang sau</span>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* PIXEL-PERFECT EXCEL SPREADSHEET TABLE */}
       <div className="overflow-x-auto rounded-xl border border-black shadow-md bg-white">
@@ -1417,9 +1450,25 @@ export default function ExcelHotelLedger({
                 </td>
               </tr>
             ) : (
-              displayRows.map((row, rowIdx) => {
+              paginatedRows.map((row, indexOnPage) => {
+              const rowIdx = startIndex + indexOnPage;
               const conflict = detectExcelConflict(row, rows, currentTime);
-              const isWarningRow = conflict.hasConflict && (conflict.isWarning || conflict.isCritical);
+              const isDuplicateActive = Boolean(
+                row.roomNumber &&
+                String(row.roomNumber).trim() !== '' &&
+                row.roomNumber !== '---' &&
+                row.roomNumber.toUpperCase() !== 'CHI' &&
+                row.roomNumber.toUpperCase() !== 'LẺ' &&
+                (row.status === 'Đang ở' || row.status === 'Đã cọc') &&
+                rows.some(
+                  (other) =>
+                    other.id !== row.id &&
+                    !other.isDateSeparator &&
+                    (other.status === 'Đang ở' || other.status === 'Đã cọc') &&
+                    String(other.roomNumber).trim() === String(row.roomNumber).trim()
+                )
+              );
+              const isWarningRow = isDuplicateActive || (conflict.hasConflict && (conflict.isWarning || conflict.isCritical));
 
               // Status flags
               const isExpenseRow = row.isExpense || row.roomNumber === 'CHI' || row.roomType === 'Phiếu Chi';
@@ -1535,6 +1584,7 @@ export default function ExcelHotelLedger({
                         placeholder=""
                         value={row.roomNumber || ''}
                         readOnly={isInputLocked}
+                        title={isDuplicateActive ? `⚠️ Phòng ${row.roomNumber} hiện đang có phòng "Đang ở" khác chưa thanh toán / chốt!` : ''}
                         onChange={(e) => {
                           const val = e.target.value;
                           handleUpdateRow(row.id, (prev) => {
@@ -1689,10 +1739,11 @@ export default function ExcelHotelLedger({
                             <button
                               type="button"
                               onClick={() => handleSetCheckOutTime(row.id)}
-                              className="shrink-0 flex items-center gap-0.5 rounded bg-rose-600 text-white px-1.5 py-0.5 text-[10px] font-bold hover:bg-rose-700 shadow-2xs transition"
-                              title="Bấm để ghi nhận giờ khách trả phòng hiện tại"
+                              className="shrink-0 flex items-center gap-0.5 rounded bg-blue-600 text-white px-1.5 py-0.5 text-[10px] font-bold hover:bg-blue-700 shadow-2xs transition"
+                              title="Bấm để lấy giờ hiện tại điền vào Giờ ra (không tự động chốt phòng)"
                             >
-                              <span>🚪 Trả phòng</span>
+                              <Clock className="h-3 w-3 inline mr-0.5" />
+                              <span>Lấy giờ</span>
                             </button>
                           ) : (
                             <button
@@ -1895,7 +1946,7 @@ export default function ExcelHotelLedger({
                     )}
                   </td>
 
-                  {/* HT Thanh Toán (Phân biệt rõ TM hoặc CK) */}
+                  {/* HT Thanh Toán (Phân biệt rõ TM, CK hoặc Hỗn hợp) */}
                   <td style={{ border: '1px solid #000000', padding: '0 2px', background: rowBgColor, textAlign: 'center' }}>
                     {row.isDateSeparator ? (
                       <span className="block text-center text-blue-200 font-bold text-xs">---</span>
@@ -1916,51 +1967,60 @@ export default function ExcelHotelLedger({
                           : '💵 Tiền mặt'}
                       </span>
                     ) : (
-                      <select
-                        value={currentPayMethod}
-                        disabled={isInputLocked}
-                        onChange={(e) => {
-                          const method = e.target.value;
-                          if (method === 'transfer') {
-                            handleUpdateRow(row.id, {
-                              paymentMethod: 'transfer',
-                              note: row.note && row.note.toLowerCase().includes('ck') ? row.note : `ck ${row.note || ''}`.trim(),
-                            });
-                          } else if (method === 'split') {
-                            handleUpdateRow(row.id, {
-                              paymentMethod: 'split',
-                              note: row.note && row.note.toLowerCase().includes('ck') ? row.note : `ck100k ${row.note || ''}`.trim(),
-                            });
-                          } else {
-                            // cash
-                            handleUpdateRow(row.id, {
-                              paymentMethod: 'cash',
-                              note: (row.note || '').replace(/ck\w*/gi, '').trim(),
-                            });
-                          }
-                        }}
-                        style={{
-                          width: '100%',
-                          height: '100%',
-                          background: 'transparent',
-                          border: 'none',
-                          textAlign: 'center',
-                          fontWeight: 'bold',
-                          outline: 'none',
-                          color:
-                            currentPayMethod === 'transfer'
-                              ? '#1D4ED8'
-                              : currentPayMethod === 'split'
-                              ? '#7E22CE'
-                              : '#047857',
-                          fontSize: '11px',
-                          cursor: isInputLocked ? 'not-allowed' : 'pointer',
-                        }}
-                      >
-                        <option value="cash">💵 Tiền mặt</option>
-                        <option value="transfer">💳 Chuyển khoản (CK)</option>
-                        <option value="split">🔄 Hỗn hợp (CK+TM)</option>
-                      </select>
+                      <div className="flex items-center justify-center gap-1">
+                        <select
+                          value={currentPayMethod}
+                          disabled={isInputLocked}
+                          onChange={(e) => {
+                            const method = e.target.value;
+                            if (method === 'transfer') {
+                              handleUpdateRow(row.id, {
+                                paymentMethod: 'transfer',
+                                note: row.note && row.note.toLowerCase().includes('ck') ? row.note : `ck ${row.note || ''}`.trim(),
+                              });
+                            } else if (method === 'split') {
+                              handleOpenSplitModal(row);
+                            } else {
+                              // cash
+                              handleUpdateRow(row.id, {
+                                paymentMethod: 'cash',
+                                note: (row.note || '').replace(/ck\s*\d*\w*/gi, '').replace(/tm\s*\d*\w*/gi, '').trim(),
+                              });
+                            }
+                          }}
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            background: 'transparent',
+                            border: 'none',
+                            textAlign: 'center',
+                            fontWeight: 'bold',
+                            outline: 'none',
+                            color:
+                              currentPayMethod === 'transfer'
+                                ? '#1D4ED8'
+                                : currentPayMethod === 'split'
+                                ? '#7E22CE'
+                                : '#047857',
+                            fontSize: '11px',
+                            cursor: isInputLocked ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          <option value="cash">💵 Tiền mặt</option>
+                          <option value="transfer">💳 Chuyển khoản (CK)</option>
+                          <option value="split">🔄 Hỗn hợp (CK+TM)</option>
+                        </select>
+                        {currentPayMethod === 'split' && !isInputLocked && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSplitModal(row)}
+                            className="rounded bg-purple-100 text-purple-800 border border-purple-300 px-1 py-0.5 text-[10px] font-bold hover:bg-purple-200 shrink-0"
+                            title="Chỉnh sửa số tiền Chuyển khoản và Tiền mặt"
+                          >
+                            Sửa
+                          </button>
+                        )}
+                      </div>
                     )}
                   </td>
 
@@ -2032,7 +2092,7 @@ export default function ExcelHotelLedger({
                           onChange={(e) => {
                             const newStatus = e.target.value;
                             if (newStatus === 'Xong') {
-                              handleFinalizePayment(row.id);
+                              requestFinalizePayment(row);
                             } else {
                               handleUpdateRow(row.id, { status: newStatus });
                             }
@@ -2057,7 +2117,7 @@ export default function ExcelHotelLedger({
                         {!isInputLocked && (
                           <button
                             type="button"
-                            onClick={() => handleFinalizePayment(row.id)}
+                            onClick={() => requestFinalizePayment(row)}
                             className="rounded bg-slate-900 text-white px-1.5 py-0.5 text-[10px] font-black hover:bg-black shadow-2xs transition shrink-0"
                             title="Bấm để Chốt thanh toán & Khóa dòng này"
                           >
@@ -2104,6 +2164,59 @@ export default function ExcelHotelLedger({
           </tbody>
         </table>
       </div>
+
+      {/* Pagination Controls (Bottom) */}
+      {totalPages > 1 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 bg-slate-100 rounded-xl border border-slate-300 text-xs font-bold shadow-xs">
+          <div className="flex items-center gap-2 text-slate-700">
+            <span>
+              Hiển thị dòng <strong className="text-slate-900 font-mono">{startIndex + 1} - {endIndex}</strong> / Tổng <strong className="text-slate-900 font-mono">{displayRows.length}</strong> dòng
+            </span>
+            <span className="text-[11px] font-normal text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
+              20 dòng / trang
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              className="flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-slate-700 hover:bg-slate-200 disabled:opacity-40 disabled:cursor-not-allowed transition"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+              <span>Trang trước</span>
+            </button>
+
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setCurrentPage(p)}
+                  className={`h-7 min-w-[28px] px-1.5 rounded-lg text-xs font-black transition ${
+                    currentPage === p
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-200'
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              className="flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-slate-700 hover:bg-slate-200 disabled:opacity-40 disabled:cursor-not-allowed transition"
+            >
+              <span>Trang sau</span>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Quick Add Row Action Bar below Table */}
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2202,6 +2315,162 @@ export default function ExcelHotelLedger({
           </div>
         </div>
       </div>
+
+      {/* MODAL THU 1 PHẦN TIỀN MẶT + 1 PHẦN CK TRÊN EXCEL */}
+      {splitModalRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-3 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="relative w-full max-w-sm rounded-xl bg-white p-4 shadow-2xl border border-slate-300 space-y-3 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-600 text-white">
+                  <CreditCard className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900">
+                    Thu Hỗn Hợp CK + TM (P.{splitModalRow.roomNumber || '---'})
+                  </h3>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSplitModalRow(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="rounded-lg bg-slate-50 p-2 border border-slate-200 flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-600">Tổng Bill:</span>
+              <span className="text-base font-black font-mono text-slate-900">
+                {formatCurrencyVND(splitModalRow.totalAmount)}
+              </span>
+            </div>
+
+            <div className="space-y-2.5">
+              <div>
+                <label className="block text-[11px] font-bold text-blue-900 mb-0.5 flex items-center gap-1">
+                  <CreditCard className="h-3 w-3 text-blue-700" />
+                  Số tiền Chuyển Khoản (CK)
+                </label>
+                <input
+                  type="number"
+                  step="10000"
+                  placeholder="0"
+                  value={splitTransferAmount}
+                  onChange={(e) => setSplitTransferAmount(e.target.value)}
+                  className="w-full rounded-lg border border-blue-300 bg-blue-50/40 p-1.5 text-sm font-black font-mono text-blue-950 focus:outline-none focus:border-blue-700"
+                />
+
+                {/* Nút bấm nhanh */}
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {[50000, 100000, 150000, 200000, Math.round((splitModalRow.totalAmount || 0) / 2)].map((amt, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setSplitTransferAmount(String(amt))}
+                      className="rounded bg-slate-100 hover:bg-slate-200 border border-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-800"
+                    >
+                      {idx === 4 ? `50% (${formatCurrencyVND(amt)})` : formatCurrencyVND(amt)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-lg bg-emerald-50 border border-emerald-300 p-2 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-emerald-950 flex items-center gap-1">
+                    <Banknote className="h-3.5 w-3.5 text-emerald-700" />
+                    Tiền mặt (TM) còn lại:
+                  </span>
+                </div>
+                <span className="text-base font-black font-mono text-emerald-900">
+                  {formatCurrencyVND(Math.max(0, (splitModalRow.totalAmount || 0) - (Number(splitTransferAmount) || 0)))}
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                  Ghi chú thêm
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ghi chú thêm..."
+                  value={splitCustomNote}
+                  onChange={(e) => setSplitCustomNote(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 focus:outline-none focus:border-slate-800"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-1 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setSplitModalRow(null)}
+                className="flex-1 rounded-lg border border-slate-300 bg-white py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSplitModal}
+                className="flex-[2] rounded-lg bg-purple-700 py-1.5 text-xs font-bold text-white hover:bg-purple-800 active:scale-[0.99] transition shadow-xs"
+              >
+                Lưu Thu Kết Hợp
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CẢNH BÁO GHI CHÚ TRƯỚC KHI CHỐT PHÒNG TRÊN EXCEL */}
+      {noteConfirmRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-3 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="relative w-full max-w-sm rounded-xl bg-white p-4 shadow-2xl border-2 border-amber-400 space-y-3 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
+                <AlertTriangle className="h-4 w-4 text-amber-700" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-900">
+                  ⚠️ Ghi Chú Phòng {noteConfirmRow.roomNumber || '---'}
+                </h3>
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-amber-50 border border-amber-300 p-2.5 text-xs font-bold text-amber-950 whitespace-pre-wrap">
+              "{noteConfirmRow.note}"
+            </div>
+
+            <div className="flex items-center justify-between text-xs font-bold text-slate-700 bg-slate-50 p-2 rounded-lg border border-slate-200">
+              <span>Tổng Bill:</span>
+              <span className="font-mono text-slate-900">{formatCurrencyVND(noteConfirmRow.totalAmount)}</span>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setNoteConfirmRow(null)}
+                className="flex-1 rounded-lg border border-slate-300 bg-white py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition"
+              >
+                Quay lại
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const id = noteConfirmRow.id;
+                  setNoteConfirmRow(null);
+                  handleFinalizePayment(id);
+                }}
+                className="flex-[2] rounded-lg bg-emerald-600 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 active:scale-[0.99] transition shadow-xs flex items-center justify-center gap-1"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                <span>Đã đọc & Chốt</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

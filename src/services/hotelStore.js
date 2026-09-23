@@ -204,6 +204,13 @@ export function dedupeLiveExcelRows(rowsList) {
   return result;
 }
 
+let _lastMonotonicId = Date.now();
+export function generateUniqueId() {
+  const now = Date.now();
+  _lastMonotonicId = now > _lastMonotonicId ? now : _lastMonotonicId + 1;
+  return _lastMonotonicId;
+}
+
 // Generate clean initial data conforming to Advance Payment & Accounting Models
 export function generateSeedDataV2() {
   return {
@@ -444,7 +451,7 @@ export const hotelStore = {
   addAuditLog({ action, details, user = 'Lễ tân', severity = 'info' }) {
     const logs = this.getAuditLogs();
     const newLog = {
-      id: Date.now() + Math.floor(Math.random() * 1000),
+      id: generateUniqueId(),
       action,
       details,
       user,
@@ -518,7 +525,7 @@ export const hotelStore = {
     ).padStart(2, '0')}`;
 
     const newExpense = {
-      id: Date.now() + Math.floor(Math.random() * 1000),
+      id: generateUniqueId(),
       amount: numAmount,
       reason: reason || 'Chi mua đồ khách sạn',
       category,
@@ -773,7 +780,7 @@ export const hotelStore = {
     const roomNumStr = roomNumber ? String(roomNumber) : '';
 
     const newReservation = {
-      id: Date.now() + Math.floor(Math.random() * 1000),
+      id: generateUniqueId(),
       room_number: roomNumStr,
       customer_name: customerName || 'Khách đặt cọc',
       customer_phone: customerPhone || '',
@@ -1081,7 +1088,7 @@ export const hotelStore = {
   }) {
     const payments = this.getPayments();
     const newPayment = {
-      id: Date.now() + Math.floor(Math.random() * 1000),
+      id: generateUniqueId(),
       booking_id: bookingId,
       reservation_id: reservationId,
       room_number: String(roomNumber),
@@ -1288,6 +1295,99 @@ export const hotelStore = {
       severity: 'warning',
     });
     return updatedBooking;
+  },
+
+  transferRoom(oldRoomNumber, newRoomNumber, customNote = '') {
+    const oldStr = String(oldRoomNumber).trim();
+    const newStr = String(newRoomNumber).trim();
+
+    if (oldStr === newStr) {
+      throw new Error('Số phòng mới trùng với số phòng hiện tại.');
+    }
+
+    const bookings = this.getBookings();
+    const activeBooking = bookings.find(
+      (b) => String(b.room_number) === oldStr && b.status === 'active'
+    );
+    if (!activeBooking) {
+      throw new Error(`Không tìm thấy lượt khách đang ở tại phòng ${oldStr}.`);
+    }
+
+    const rooms = this.getRooms();
+    const oldRoomObj = rooms.find((r) => String(r.room_number) === oldStr);
+    const newRoomObj = rooms.find((r) => String(r.room_number) === newStr);
+
+    if (!newRoomObj) {
+      throw new Error(`Phòng ${newStr} không tồn tại trong hệ thống.`);
+    }
+    if (newRoomObj.status !== 'available') {
+      throw new Error(`Phòng ${newStr} hiện không trống (Trạng thái: ${newRoomObj.status}).`);
+    }
+
+    // 1. Update room statuses
+    if (oldRoomObj) oldRoomObj.status = 'available';
+    newRoomObj.status = 'occupied';
+    this.saveRooms(rooms);
+
+    // 2. Update booking info
+    activeBooking.room_id = newRoomObj.id;
+    activeBooking.room_number = newStr;
+    const transferTag = `[Chuyển từ P.${oldStr} sang P.${newStr}]`;
+    if (customNote) {
+      activeBooking.notes = activeBooking.notes
+        ? `${activeBooking.notes} | ${transferTag}: ${customNote}`
+        : `${transferTag}: ${customNote}`;
+    } else {
+      activeBooking.notes = activeBooking.notes
+        ? `${activeBooking.notes} | ${transferTag}`
+        : transferTag;
+    }
+    this.saveBookings(bookings);
+
+    // 3. Update payment records
+    const payments = this.getPayments();
+    let paymentsUpdated = false;
+    payments.forEach((p) => {
+      if (sameEntityId(p.booking_id, activeBooking.id)) {
+        p.room_number = newStr;
+        paymentsUpdated = true;
+      }
+    });
+    if (paymentsUpdated) {
+      this.savePayments(payments);
+    }
+
+    // 4. Sync to Excel
+    this.syncBookingToExcel(activeBooking, false);
+
+    // 5. Cloud Supabase Sync
+    if (supabaseService.isAvailable()) {
+      supabaseService.updateBooking(activeBooking.id, activeBooking).catch((err) =>
+        console.warn('Supabase updateBooking transfer warning:', err?.message || err)
+      );
+      if (oldRoomObj) {
+        supabaseService.updateRoomStatus(oldStr, 'available').catch((err) =>
+          console.warn('Supabase updateRoomStatus available warning:', err?.message || err)
+        );
+      }
+      supabaseService.updateRoomStatus(newStr, 'occupied').catch((err) =>
+        console.warn('Supabase updateRoomStatus occupied warning:', err?.message || err)
+      );
+    }
+
+    // 6. Audit log
+    this.addAuditLog({
+      action: 'Chuyển phòng',
+      details: `Chuyển khách ${activeBooking.customer_name || 'Khách'} từ P.${oldStr} sang P.${newStr}${customNote ? ` (Ghi chú: ${customNote})` : ''}`,
+      user: 'Lễ tân',
+      severity: 'info',
+    });
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('hotel-store-updated'));
+    }
+
+    return { booking: activeBooking, oldRoom: oldRoomObj, newRoom: newRoomObj };
   },
 
   // --- Two-way Synchronization between Room Matrix and Excel POS ---
@@ -1666,14 +1766,6 @@ export const hotelStore = {
               r.checkOut = r.checkIn;
             }
             excelNeedsRewrite = true;
-            // Free room if no other active stay for this room
-            const stillActive = currentBookings.some(
-              (b) => String(b.room_number) === roomNumStr && b.status === 'active'
-            );
-            if (!stillActive && roomObj.status !== 'available') {
-              roomObj.status = 'available';
-              hasChange = true;
-            }
             return;
           }
 
@@ -1686,24 +1778,6 @@ export const hotelStore = {
                 );
 
           if (!activeBooking) {
-            // Check if r belongs to an already completed booking (by explicit bookingId or row id)
-            const matchedCompleted = currentBookings.find(
-              (b) =>
-                String(b.room_number) === roomNumStr &&
-                b.status === 'completed' &&
-                (sameEntityId(b.id, r.bookingId) || (r.id && sameEntityId(b.id, r.id)))
-            );
-
-            if (matchedCompleted) {
-              r.status = 'Xong';
-              r.bookingId = matchedCompleted.id;
-              if (!r.checkOut || String(r.checkOut).trim() === '') {
-                r.checkOut = r.checkIn;
-              }
-              excelNeedsRewrite = true;
-              return;
-            }
-
             const checkInParts = String(r.checkIn || '').split(':');
             const now = new Date();
             if (checkInParts.length === 2) {
@@ -1774,6 +1848,28 @@ export const hotelStore = {
             const bSoft = Number(r.softDrink) || 0;
             const depAmt = Math.max(0, Number(r.depositAmount) || 0);
 
+            if (String(activeBooking.room_number) !== roomNumStr) {
+              const oldRoomNum = String(activeBooking.room_number);
+              const oldRoom = currentRooms.find((rm) => rm.room_number === oldRoomNum);
+              if (oldRoom && !currentBookings.some((b) => b.id !== activeBooking.id && String(b.room_number) === oldRoomNum && b.status === 'active')) {
+                oldRoom.status = 'available';
+              }
+              activeBooking.room_number = roomNumStr;
+              activeBooking.room_id = roomObj.id;
+              roomObj.status = 'occupied';
+              bookingUpdated = true;
+
+              const payments = this.getPayments();
+              let paymentsChanged = false;
+              payments.forEach((p) => {
+                if (sameEntityId(p.booking_id, activeBooking.id)) {
+                  p.room_number = roomNumStr;
+                  paymentsChanged = true;
+                }
+              });
+              if (paymentsChanged) this.savePayments(payments);
+            }
+
             if (activeBooking.beer_qty !== bBeer) {
               activeBooking.beer_qty = bBeer;
               bookingUpdated = true;
@@ -1796,18 +1892,24 @@ export const hotelStore = {
               bookingUpdated = true;
 
               const payments = this.getPayments();
-              const hasDepositPayment = payments.some(
-                (p) => sameEntityId(p.booking_id, activeBooking.id) && (p.payment_type === 'advance' || p.payment_type === 'deposit')
-              );
-              if (!hasDepositPayment) {
+              const recordedAdvances = payments
+                .filter(
+                  (p) =>
+                    sameEntityId(p.booking_id, activeBooking.id) &&
+                    (p.payment_type === 'advance' || p.payment_type === 'deposit')
+                )
+                .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+              if (depAmt > recordedAdvances) {
+                const diff = depAmt - recordedAdvances;
                 const parsed = parseNoteColumn(r.note, 0, depAmt);
                 this.addPaymentRecord({
                   bookingId: activeBooking.id,
                   roomNumber: roomNumStr,
                   paymentType: 'advance',
                   method: parsed.paymentMethod === 'transfer' ? 'transfer' : 'cash',
-                  amount: depAmt,
-                  note: `[Cọc / Thu trước Excel] Phòng ${roomNumStr}`,
+                  amount: diff,
+                  note: `[Cọc / Thu trước Excel] Phòng ${roomNumStr}${diff !== depAmt ? ` (+${formatCurrencyVND(diff)})` : ''}`,
                   createdAt: new Date().toISOString(),
                 });
               }
@@ -1829,10 +1931,18 @@ export const hotelStore = {
               (b) => sameEntityId(b.id, r.bookingId) && b.status === 'active'
             );
           } else {
-            // Only if r has no bookingId attached (e.g. user manually typed Xong in Excel)
-            matchingActiveBooking = currentBookings.find(
-              (b) => String(b.room_number) === roomNumStr && b.status === 'active'
+            // Check if this row is already an existing completed booking in store
+            const existingCompleted = currentBookings.find(
+              (b) =>
+                String(b.room_number) === roomNumStr &&
+                b.status === 'completed' &&
+                (sameEntityId(b.id, r.id) || (b.check_in && r.checkIn && b.check_in.includes(r.checkIn)))
             );
+            if (existingCompleted) {
+              r.bookingId = existingCompleted.id;
+            }
+            // Unlinked completed rows (without bookingId) must NEVER auto-checkout active stays
+            matchingActiveBooking = null;
           }
 
           if (matchingActiveBooking) {
@@ -2064,7 +2174,7 @@ export const hotelStore = {
     }
 
     const newBooking = {
-      id: Date.now(),
+      id: generateUniqueId(),
       room_id: room.id,
       room_number: room.room_number,
       customer_name: customerName || 'Khách vãng lai',
@@ -2161,6 +2271,7 @@ export const hotelStore = {
     refundMethod = 'cash', // 'cash' or 'transfer'
     notes = '',
     nextRoomStatus = 'available',
+    paymentCreatedAt,
   }) {
     const bookings = this.getBookings();
     const idx = bookings.findIndex(
@@ -2225,7 +2336,8 @@ export const hotelStore = {
     // Overpayment / change due (from new payment exceeding balance due or advance overpaid)
     const changeDue = (totalNewPaid > balanceDue ? totalNewPaid - balanceDue : 0) + advanceOverpaid;
 
-    const nowIso = checkOutIso || new Date().toISOString();
+    // Financial transaction timestamp in current shift (NOT room occupancy checkOut time)
+    const paymentNowIso = paymentCreatedAt || new Date().toISOString();
 
     // 1. Record Cash Payment in Ledger
     if (cashIn > 0) {
@@ -2238,7 +2350,7 @@ export const hotelStore = {
         note: previousDeposit > 0
           ? `Thu thêm đủ tiền mặt phòng ${effectiveRoomNumber} khi trả phòng (Đã trừ cọc trước ${formatCurrencyVND(previousDeposit)})`
           : `Thanh toán tiền mặt phòng ${effectiveRoomNumber}`,
-        createdAt: nowIso,
+        createdAt: paymentNowIso,
       });
     }
 
@@ -2253,7 +2365,7 @@ export const hotelStore = {
         note: previousDeposit > 0
           ? `Thu thêm đủ chuyển khoản phòng ${effectiveRoomNumber} khi trả phòng (Đã trừ cọc trước ${formatCurrencyVND(previousDeposit)})`
           : `Chuyển khoản phòng ${effectiveRoomNumber}`,
-        createdAt: nowIso,
+        createdAt: paymentNowIso,
       });
     }
 
@@ -2266,7 +2378,7 @@ export const hotelStore = {
         method: refundMethod,
         amount: -changeDue, // Negative cash drawer outflow
         note: `Thối lại tiền cho khách phòng ${effectiveRoomNumber} (Dư ${formatCurrencyVND(changeDue)})`,
-        createdAt: nowIso,
+        createdAt: paymentNowIso,
       });
     }
 
@@ -2794,7 +2906,7 @@ export const hotelStore = {
 
     const initCashNum = Number(initialCash) || 1000000;
     const newClosure = {
-      id: Date.now(),
+      id: generateUniqueId(),
       closed_date: date,
       shift_name: shiftName,
       initial_cash: initCashNum,
@@ -2819,12 +2931,14 @@ export const hotelStore = {
     }
 
     this.addAuditLog({
-      action: 'Khóa sổ ca',
-      details: `Khóa sổ ${shiftName} ngày ${date}, tổng thu: ${formatCurrencyVND(
+      action: 'Chốt ca',
+      details: `Chốt ca: ${shiftName} ngày ${date} lúc ${formatDateTimeDisplay(closedAt)} | TM: ${formatCurrencyVND(
+        newClosure.net_cash
+      )}, CK: ${formatCurrencyVND(newClosure.net_transfer)}, Vốn két: ${formatCurrencyVND(
+        newClosure.initial_cash
+      )}, Bàn giao: ${formatCurrencyVND(newClosure.total_cash_in_drawer)}, Tổng thực thu: ${formatCurrencyVND(
         newClosure.total_revenue_recognized
-      )} (Két: ${formatCurrencyVND(newClosure.net_cash)}, CK: ${formatCurrencyVND(
-        newClosure.net_transfer
-      )})`,
+      )}`,
       user: 'Lễ tân',
       severity: 'info',
     });

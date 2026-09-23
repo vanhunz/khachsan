@@ -30,8 +30,8 @@ import PriceRulesModal from './components/PriceRulesModal';
 import ExcelHotelLedger from './components/ExcelHotelLedger';
 import ExpenseModal from './components/ExpenseModal';
 import AdminPortalModal from './components/AdminPortalModal';
-import StaffLoginModal from './components/StaffLoginModal';
 import EditBookingModal from './components/EditBookingModal';
+import TransferRoomModal from './components/TransferRoomModal';
 import ErrorBoundary from './components/ErrorBoundary';
 import {
   hotelStore,
@@ -49,14 +49,6 @@ export default function App() {
   const [payments, setPayments] = useState([]);
   const [closures, setClosures] = useState([]);
   const [reservations, setReservations] = useState([]);
-
-  const [isStaffAuthenticated, setIsStaffAuthenticated] = useState(() => {
-    try {
-      return sessionStorage.getItem('hotel_pos_staff_auth') === 'true';
-    } catch {
-      return false;
-    }
-  });
 
   // Master Input Lock State (Khóa không cho nhập thêm)
   const [isInputLocked, setIsInputLocked] = useState(() => hotelStore.isInputLocked());
@@ -87,6 +79,11 @@ export default function App() {
     booking: null,
   });
   const [editBookingModalData, setEditBookingModalData] = useState({
+    isOpen: false,
+    room: null,
+    booking: null,
+  });
+  const [transferRoomModalData, setTransferRoomModalData] = useState({
     isOpen: false,
     room: null,
     booking: null,
@@ -510,6 +507,28 @@ export default function App() {
     }
   };
 
+  const handleOpenTransferRoom = (room, booking) => {
+    if (isInputLocked) {
+      showToast('⚠️ Hệ thống đang KHÓA (không cho phép thay đổi dữ liệu)', 'error');
+      return;
+    }
+    setTransferRoomModalData({
+      isOpen: true,
+      room,
+      booking,
+    });
+  };
+
+  const handleConfirmTransferRoom = (oldRoomNumber, newRoomNumber, customNote) => {
+    try {
+      hotelStore.transferRoom(oldRoomNumber, newRoomNumber, customNote);
+      loadStoreData();
+      showToast(`Đã chuyển khách từ P.${oldRoomNumber} sang P.${newRoomNumber} thành công!`, 'success');
+    } catch (err) {
+      showToast(err.message || 'Lỗi khi chuyển phòng!', 'error');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 pb-1 select-none">
       {/* Native Desktop Windows Titlebar */}
@@ -697,6 +716,7 @@ export default function App() {
                   onCheckOut={handleOpenCheckOut}
                   onOpenAdvancePayment={handleOpenAdvancePayment}
                   onOpenEditBooking={handleOpenEditBooking}
+                  onOpenTransferRoom={handleOpenTransferRoom}
                   onSetStatus={handleSetRoomStatus}
                 />
               ))}
@@ -812,6 +832,16 @@ export default function App() {
         onOpenReceiptPreview={handleOpenReceiptPreview}
       />
 
+      {/* Transfer Room Modal (Chuyển phòng đang ở sang phòng trống) */}
+      <TransferRoomModal
+        isOpen={transferRoomModalData.isOpen}
+        onClose={() => setTransferRoomModalData({ isOpen: false, room: null, booking: null })}
+        currentRoom={transferRoomModalData.room}
+        activeBooking={transferRoomModalData.booking}
+        availableRooms={rooms.filter((r) => r.status === 'available')}
+        onConfirmTransfer={handleConfirmTransferRoom}
+      />
+
       {/* Receipt Modal */}
       <ReceiptModal
         isOpen={receiptModalData.isOpen}
@@ -854,17 +884,6 @@ export default function App() {
         isOpen={isAdminPortalOpen}
         onClose={() => setIsAdminPortalOpen(false)}
         onDataChanged={loadStoreData}
-      />
-
-      {/* Staff Login Modal (Mã PIN: 123) */}
-      <StaffLoginModal
-        isOpen={!isStaffAuthenticated}
-        onSuccess={() => {
-          setIsStaffAuthenticated(true);
-          try {
-            sessionStorage.setItem('hotel_pos_staff_auth', 'true');
-          } catch {}
-        }}
       />
     </div>
   );

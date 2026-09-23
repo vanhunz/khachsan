@@ -15,6 +15,7 @@ import {
   Cloud,
   CloudOff,
   RefreshCw,
+  Zap,
 } from 'lucide-react';
 import { HOTEL_CONFIG } from '../services/hotelStore';
 import { networkService } from '../services/networkService';
@@ -246,14 +247,15 @@ export default function Navbar({
             <span>👑 Admin</span>
           </button>
 
-          {/* Shift Closure Button */}
+          {/* Quick Shift Closeout Button (Chốt Nhanh) */}
           <button
             type="button"
             onClick={onOpenClosureModal}
-            className="hidden sm:flex items-center gap-1.5 rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-black text-slate-950 shadow-xs hover:bg-amber-400 active:scale-[0.98] transition"
+            className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 px-3 py-1.5 text-xs font-black text-slate-950 shadow-md shadow-amber-500/20 active:scale-[0.98] transition"
+            title="Chốt nhanh ca: Xem ngay Tiền Mặt (TM) & Chuyển Khoản (CK) để đếm tiền và đối soát"
           >
-            <Lock className="h-3.5 w-3.5" />
-            <span>Khóa Ca</span>
+            <Zap className="h-3.5 w-3.5 fill-slate-950 text-slate-950" />
+            <span>⚡ Chốt Nhanh</span>
           </button>
         </div>
       </div>

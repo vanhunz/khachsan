@@ -1333,28 +1333,49 @@ export default function AdminPortalModal({
               {activeTab === 'audit_logs' && (
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2.5 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
-                    <select
-                      value={logActionFilter}
-                      onChange={(e) => setLogActionFilter(e.target.value)}
-                      className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-900"
-                    >
-                      <option value="all">Tất cả hành động</option>
-                      <option value="Nhận phòng">Nhận phòng</option>
-                      <option value="Trả phòng">Trả phòng</option>
-                      <option value="Xóa phòng">Xóa phòng</option>
-                      <option value="Thu trước">Thu trước</option>
-                      <option value="phiếu chi">Phiếu chi</option>
-                      <option value="Đổi trạng thái phòng">Đổi trạng thái phòng</option>
-                      <option value="Đổi mật khẩu">Đổi mật khẩu</option>
-                    </select>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setLogActionFilter('all')}
+                        className={`rounded-xl px-3 py-1.5 text-xs font-bold transition ${
+                          logActionFilter === 'all'
+                            ? 'bg-slate-900 text-white shadow-xs'
+                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        }`}
+                      >
+                        Tất Cả
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLogActionFilter('Xóa phòng')}
+                        className={`rounded-xl px-3 py-1.5 text-xs font-bold transition ${
+                          logActionFilter === 'Xóa phòng'
+                            ? 'bg-rose-600 text-white shadow-xs'
+                            : 'bg-rose-50 text-rose-800 hover:bg-rose-100 border border-rose-200'
+                        }`}
+                      >
+                        ⚠️ Phòng Đã Xóa / Hủy
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLogActionFilter('Chốt ca')}
+                        className={`rounded-xl px-3 py-1.5 text-xs font-bold transition ${
+                          logActionFilter === 'Chốt ca'
+                            ? 'bg-amber-600 text-white shadow-xs'
+                            : 'bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-200'
+                        }`}
+                      >
+                        🔒 Thời Gian Chốt Ca
+                      </button>
+                    </div>
 
                     <div className="flex items-center gap-2">
                       <input
                         type="text"
-                        placeholder="Tìm trong nhật ký..."
+                        placeholder="Tìm phòng, tiền, nội dung..."
                         value={logSearchTerm}
                         onChange={(e) => setLogSearchTerm(e.target.value)}
-                        className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs text-slate-900 w-56"
+                        className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs text-slate-900 w-56 focus:outline-none"
                       />
                       <button
                         type="button"
@@ -1371,8 +1392,8 @@ export default function AdminPortalModal({
                       <thead className="sticky top-0 bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase text-[11px]">
                         <tr>
                           <th className="p-3">Thời Gian</th>
-                          <th className="p-3">Hành Động</th>
-                          <th className="p-3">Chi Tiết</th>
+                          <th className="p-3">Loại Sự Kiện</th>
+                          <th className="p-3">Nội Dung Chi Tiết (Phòng / Tiền / Chốt Ca)</th>
                           <th className="p-3 text-center">Người Thực Hiện</th>
                         </tr>
                       </thead>
@@ -1380,22 +1401,35 @@ export default function AdminPortalModal({
                         {filteredAuditLogs.length === 0 ? (
                           <tr>
                             <td colSpan={4} className="py-8 text-center text-slate-400">
-                              Không có nhật ký hoạt động nào.
+                              Không có nhật ký hoạt động nào phù hợp.
                             </td>
                           </tr>
                         ) : (
-                          filteredAuditLogs.map((log) => (
-                            <tr key={log.id} className="hover:bg-slate-50">
-                              <td className="p-3 font-mono text-[11px] text-slate-500 whitespace-nowrap">
-                                {formatDateTimeDisplay(log.timestamp)}
-                              </td>
-                              <td className="p-3 font-bold text-slate-900 whitespace-nowrap">
-                                {log.action}
-                              </td>
-                              <td className="p-3 text-slate-700">{log.details}</td>
-                              <td className="p-3 text-center font-bold text-slate-600">{log.user || 'Lễ tân'}</td>
-                            </tr>
-                          ))
+                          filteredAuditLogs.map((log) => {
+                            const isDelete = (log.action || '').toLowerCase().includes('xóa') || (log.action || '').toLowerCase().includes('hủy');
+                            const isShift = (log.action || '').toLowerCase().includes('chốt') || (log.action || '').toLowerCase().includes('khóa');
+
+                            return (
+                              <tr key={log.id} className={`hover:bg-slate-50 ${isDelete ? 'bg-rose-50/30' : isShift ? 'bg-amber-50/20' : ''}`}>
+                                <td className="p-3 font-mono text-[11px] text-slate-500 whitespace-nowrap font-bold">
+                                  {formatDateTimeDisplay(log.timestamp)}
+                                </td>
+                                <td className="p-3 whitespace-nowrap">
+                                  <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                                    isDelete
+                                      ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                      : isShift
+                                      ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                      : 'bg-slate-100 text-slate-800 border-slate-200'
+                                  }`}>
+                                    {log.action}
+                                  </span>
+                                </td>
+                                <td className="p-3 text-slate-800 font-medium">{log.details}</td>
+                                <td className="p-3 text-center font-bold text-slate-600">{log.user || 'Lễ tân'}</td>
+                              </tr>
+                            );
+                          })
                         )}
                       </tbody>
                     </table>
