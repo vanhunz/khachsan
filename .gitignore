@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+.venv/
+
+# Build output and local tooling
+dist/
+build/
+coverage/
+.cache/
+.vite/
+
+# Local environment files and secrets
+.env
+.env.*
+!.env.example
+
+# Local application data
+hotel_data.json
+
+# Excel source files and generated analysis dumps
+*.xlsm
+excel_dump.json
+s2_full_dump.json
+
+# Logs and OS/editor files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.DS_Store
+Thumbs.db

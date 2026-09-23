@@ -1,0 +1,44 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run Full App (Electron + React Vite)",
+      "type": "shell",
+      "command": "npm run dev",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": [],
+      "detail": "Khởi chạy toàn bộ mã nguồn (Vite Dev Server + Electron App)"
+    },
+    {
+      "label": "Run Web Only (Vite Browser)",
+      "type": "shell",
+      "command": "npx vite",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "shared"
+      },
+      "problemMatcher": [],
+      "detail": "Chỉ chạy giao diện Web trên trình duyệt (http://localhost:5173)"
+    },
+    {
+      "label": "Build App (Dong goi EXE Windows)",
+      "type": "shell",
+      "command": "npm run electron:build",
+      "problemMatcher": [],
+      "detail": "Đóng gói ứng dụng thành file cài đặt Windows (.exe)"
+    }
+  ]
+}
